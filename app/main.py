@@ -1,55 +1,66 @@
 import os
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
+from typing import List
 from sqlmodel import SQLModel, Session, create_engine, select
-from app.models import Asset
+from app.models import Asset, Transaction, Retention, ExchangeRate, Configuration
 
-# Load .env
+# Load environment variables from .env
 load_dotenv()
-PG_USER     = os.getenv("PG_USER")
-PG_PASSWORD = os.getenv("PG_PASSWORD")
-PG_HOST     = os.getenv("PG_HOST", "localhost")
-PG_PORT     = os.getenv("PG_PORT", "5432")
-PG_DB       = os.getenv("PG_DB")
 
-# Build a standard DSN string; pg8000 handles Unicode passwords correctly
-DATABASE_URL = (
-    f"postgresql+pg8000://"
-    f"{PG_USER}:{PG_PASSWORD}@"
-    f"{PG_HOST}:{PG_PORT}/{PG_DB}"
+# Read database credentials from environment (no hardcoding)
+PG_USER = os.environ["PG_USER"]
+PG_PASSWORD = os.environ["PG_PASSWORD"]
+PG_HOST = os.environ["PG_HOST"]
+PG_PORT = int(os.environ["PG_PORT"])
+PG_DB = os.environ["PG_DB"]
+
+# Create database engine using connect_args to avoid credentials in URL
+engine = create_engine(
+    "postgresql+pg8000://",
+    echo=True,
+    connect_args={
+        "user": PG_USER,
+        "password": PG_PASSWORD,
+        "host": PG_HOST,
+        "port": PG_PORT,
+        "database": PG_DB,
+    },
 )
 
-# Create the engine with pg8000
-engine = create_engine(DATABASE_URL, echo=True)
-
-# Auto-create tables
+# Auto-create tables based on SQLModel metadata
 SQLModel.metadata.create_all(engine)
 
-# Instantiate FastAPI
+# Instantiate FastAPI application
 app = FastAPI(title="Investment Tracker API")
 
+
 # --- CRUD endpoints for Asset ---
+
 
 @app.post("/assets/", response_model=Asset)
 def create_asset(asset: Asset):
     with Session(engine) as session:
-        session.add(asset)        # Prepare the new Asset record
-        session.commit()          # Persist the record in the database
-        session.refresh(asset)    # Refresh the instance with generated values (e.g., id)
-        return asset              # Return the created Asset to the client
+        session.add(asset)
+        session.commit()
+        session.refresh(asset)
+        return asset
 
-@app.get("/assets/", response_model=list[Asset])
+
+@app.get("/assets/", response_model=List[Asset])
 def list_assets():
     with Session(engine) as session:
-        return session.exec(select(Asset)).all()  # Fetch all Asset records
+        return session.exec(select(Asset)).all()
+
 
 @app.get("/assets/{asset_id}", response_model=Asset)
 def get_asset(asset_id: int):
     with Session(engine) as session:
-        asset = session.get(Asset, asset_id)       # Retrieve Asset by primary key
+        asset = session.get(Asset, asset_id)
         if not asset:
             raise HTTPException(status_code=404, detail="Asset not found")
         return asset
+
 
 @app.patch("/assets/{asset_id}", response_model=Asset)
 def update_asset(asset_id: int, asset: Asset):
@@ -57,20 +68,74 @@ def update_asset(asset_id: int, asset: Asset):
         db_asset = session.get(Asset, asset_id)
         if not db_asset:
             raise HTTPException(status_code=404, detail="Asset not found")
-        updated_data = asset.dict(exclude_unset=True)  # Only update provided fields
-        for key, val in updated_data.items():
-            setattr(db_asset, key, val)              # Apply updates
+        updates = asset.dict(exclude_unset=True)
+        for key, val in updates.items():
+            setattr(db_asset, key, val)
         session.add(db_asset)
-        session.commit()                             # Commit updates to the database
-        session.refresh(db_asset)                    # Refresh the instance with latest data
+        session.commit()
+        session.refresh(db_asset)
         return db_asset
+
 
 @app.delete("/assets/{asset_id}")
 def delete_asset(asset_id: int):
     with Session(engine) as session:
-        asset = session.get(Asset, asset_id)         # Retrieve Asset to delete
+        asset = session.get(Asset, asset_id)
         if not asset:
             raise HTTPException(status_code=404, detail="Asset not found")
-        session.delete(asset)                        # Delete the Asset record from the database
-        session.commit()                             # Commit the deletion
-        return {"ok": True}                          # Return a success response
+        session.delete(asset)
+        session.commit()
+        return {"ok": True}
+
+
+# --- CRUD endpoints for Transaction ---
+
+
+@app.post("/transactions/", response_model=Transaction)
+def create_transaction(transaction: Transaction):
+    with Session(engine) as session:
+        session.add(transaction)
+        session.commit()
+        session.refresh(transaction)
+        return transaction
+
+
+@app.get("/transactions/", response_model=List[Transaction])
+def list_transactions():
+    with Session(engine) as session:
+        return session.exec(select(Transaction)).all()
+
+
+@app.get("/transactions/{transaction_id}", response_model=Transaction)
+def get_transaction(transaction_id: int):
+    with Session(engine) as session:
+        txn = session.get(Transaction, transaction_id)
+        if not txn:
+            raise HTTPException(status_code=404, detail="Transaction not found")
+        return txn
+
+
+@app.patch("/transactions/{transaction_id}", response_model=Transaction)
+def update_transaction(transaction_id: int, transaction: Transaction):
+    with Session(engine) as session:
+        db_txn = session.get(Transaction, transaction_id)
+        if not db_txn:
+            raise HTTPException(status_code=404, detail="Transaction not found")
+        updates = transaction.dict(exclude_unset=True)
+        for key, val in updates.items():
+            setattr(db_txn, key, val)
+        session.add(db_txn)
+        session.commit()
+        session.refresh(db_txn)
+        return db_txn
+
+
+@app.delete("/transactions/{transaction_id}")
+def delete_transaction(transaction_id: int):
+    with Session(engine) as session:
+        txn = session.get(Transaction, transaction_id)
+        if not txn:
+            raise HTTPException(status_code=404, detail="Transaction not found")
+        session.delete(txn)
+        session.commit()
+        return {"ok": True}
