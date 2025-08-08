@@ -68,7 +68,7 @@ def update_asset(asset_id: int, asset: Asset):
         db_asset = session.get(Asset, asset_id)
         if not db_asset:
             raise HTTPException(status_code=404, detail="Asset not found")
-        updates = asset.dict(exclude_unset=True)
+        updates = asset.model_dump(exclude_unset=True)  # use model_dump instead of dict
         for key, val in updates.items():
             setattr(db_asset, key, val)
         session.add(db_asset)
@@ -89,8 +89,6 @@ def delete_asset(asset_id: int):
 
 
 # --- CRUD endpoints for Transaction ---
-
-
 @app.post("/transactions/", response_model=Transaction)
 def create_transaction(transaction: Transaction):
     with Session(engine) as session:
@@ -121,7 +119,7 @@ def update_transaction(transaction_id: int, transaction: Transaction):
         db_txn = session.get(Transaction, transaction_id)
         if not db_txn:
             raise HTTPException(status_code=404, detail="Transaction not found")
-        updates = transaction.dict(exclude_unset=True)
+        updates = transaction.model_dump(exclude_unset=True)  # use model_dump
         for key, val in updates.items():
             setattr(db_txn, key, val)
         session.add(db_txn)
@@ -139,3 +137,6 @@ def delete_transaction(transaction_id: int):
         session.delete(txn)
         session.commit()
         return {"ok": True}
+
+
+# Further endpoints for Retention, ExchangeRate, Configuration can be added similarly

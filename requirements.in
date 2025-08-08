@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+sqlmodel
+SQLAlchemy
+pydantic
+python-dotenv
+pg8000
+pydantic-settings
