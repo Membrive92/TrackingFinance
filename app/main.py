@@ -1,142 +1,115 @@
-import os
-from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
-from typing import List
+# app/main.py
+from __future__ import annotations
+
+# FastAPI & middleware
+from fastapi import FastAPI, Depends, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+
+# SQLModel / SQLAlchemy
 from sqlmodel import SQLModel, Session, create_engine, select
-from app.models import Asset, Transaction, Retention, ExchangeRate, Configuration
 
-# Load environment variables from .env
-load_dotenv()
+# App config (reads .env) and models/schemas
+from app.core.settings import settings
+from app.models import Asset
+from app.schemas.Asset import AssetCreate, AssetRead, AssetUpdate
 
-# Read database credentials from environment (no hardcoding)
-PG_USER = os.environ["PG_USER"]
-PG_PASSWORD = os.environ["PG_PASSWORD"]
-PG_HOST = os.environ["PG_HOST"]
-PG_PORT = int(os.environ["PG_PORT"])
-PG_DB = os.environ["PG_DB"]
 
-# Create database engine using connect_args to avoid credentials in URL
-engine = create_engine(
-    "postgresql+pg8000://",
-    echo=True,
-    connect_args={
-        "user": PG_USER,
-        "password": PG_PASSWORD,
-        "host": PG_HOST,
-        "port": PG_PORT,
-        "database": PG_DB,
-    },
+# ---------------------------------------------------------------------
+# Database engine (uses pg8000 driver) and session dependency
+# ---------------------------------------------------------------------
+DATABASE_URL = (
+    f"postgresql+pg8000://{settings.PG_USER}:{settings.PG_PASSWORD}"
+    f"@{settings.PG_HOST}:{settings.PG_PORT}/{settings.PG_DB}"
 )
 
-# Auto-create tables based on SQLModel metadata
+# Robust connection; SQL echo controlled by DEBUG in .env
+engine = create_engine(DATABASE_URL, pool_pre_ping=True, echo=settings.DEBUG)
+
+
+def get_session():
+    """Yield a DB session for the duration of the request (no expiration on commit)."""
+    with Session(engine, expire_on_commit=False) as session:
+        yield session
+
+
+# ---------------------------------------------------------------------
+# FastAPI application & middleware
+# ---------------------------------------------------------------------
+app = FastAPI(title="TrackingFinance API", version="0.1.0")
+
+# CORS so the Angular SPA (localhost:4200 by default) can call the API from the browser
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# TEMPORARY: create tables if they don't exist. We will switch to Alembic later.
 SQLModel.metadata.create_all(engine)
 
-# Instantiate FastAPI application
-app = FastAPI(title="Investment Tracker API")
+
+# ---------------------------------------------------------------------
+# Healthcheck
+# ---------------------------------------------------------------------
+@app.get("/v1/health")
+def health():
+    """Simple liveness endpoint."""
+    return {"status": "ok"}
 
 
-# --- CRUD endpoints for Asset ---
+# ---------------------------------------------------------------------
+# Assets endpoints (using Pydantic v2 schemas)
+# ---------------------------------------------------------------------
+@app.get("/v1/assets", response_model=list[AssetRead])
+def list_assets(session: Session = Depends(get_session)):
+    """Return all assets."""
+    results = session.exec(select(Asset)).all()
+    # Validate from ORM attributes to produce the response schema
+    return [AssetRead.model_validate(a, from_attributes=True) for a in results]
 
 
-@app.post("/assets/", response_model=Asset)
-def create_asset(asset: Asset):
-    with Session(engine) as session:
-        session.add(asset)
-        session.commit()
-        session.refresh(asset)
-        return asset
+@app.get("/v1/assets/{asset_id}", response_model=AssetRead)
+def get_asset(asset_id: int, session: Session = Depends(get_session)):
+    """Return a single asset by id."""
+    asset = session.get(Asset, asset_id)
+    if not asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    return AssetRead.model_validate(asset, from_attributes=True)
 
 
-@app.get("/assets/", response_model=List[Asset])
-def list_assets():
-    with Session(engine) as session:
-        return session.exec(select(Asset)).all()
+@app.post("/v1/assets", response_model=AssetRead, status_code=201)
+def create_asset(payload: AssetCreate, session: Session = Depends(get_session)):
+    """Create a new asset."""
+    asset = Asset(**payload.model_dump())
+    session.add(asset)
+    session.commit()
+    session.refresh(asset)
+    return AssetRead.model_validate(asset, from_attributes=True)
 
 
-@app.get("/assets/{asset_id}", response_model=Asset)
-def get_asset(asset_id: int):
-    with Session(engine) as session:
-        asset = session.get(Asset, asset_id)
-        if not asset:
-            raise HTTPException(status_code=404, detail="Asset not found")
-        return asset
+@app.patch("/v1/assets/{asset_id}", response_model=AssetRead)
+def update_asset(asset_id: int, payload: AssetUpdate, session: Session = Depends(get_session)):
+    """Partially update an asset."""
+    asset = session.get(Asset, asset_id)
+    if not asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+
+    for k, v in payload.model_dump(exclude_unset=True).items():
+        setattr(asset, k, v)
+
+    session.commit()
+    session.refresh(asset)
+    return AssetRead.model_validate(asset, from_attributes=True)
 
 
-@app.patch("/assets/{asset_id}", response_model=Asset)
-def update_asset(asset_id: int, asset: Asset):
-    with Session(engine) as session:
-        db_asset = session.get(Asset, asset_id)
-        if not db_asset:
-            raise HTTPException(status_code=404, detail="Asset not found")
-        updates = asset.model_dump(exclude_unset=True)  # use model_dump instead of dict
-        for key, val in updates.items():
-            setattr(db_asset, key, val)
-        session.add(db_asset)
-        session.commit()
-        session.refresh(db_asset)
-        return db_asset
-
-
-@app.delete("/assets/{asset_id}")
-def delete_asset(asset_id: int):
-    with Session(engine) as session:
-        asset = session.get(Asset, asset_id)
-        if not asset:
-            raise HTTPException(status_code=404, detail="Asset not found")
-        session.delete(asset)
-        session.commit()
-        return {"ok": True}
-
-
-# --- CRUD endpoints for Transaction ---
-@app.post("/transactions/", response_model=Transaction)
-def create_transaction(transaction: Transaction):
-    with Session(engine) as session:
-        session.add(transaction)
-        session.commit()
-        session.refresh(transaction)
-        return transaction
-
-
-@app.get("/transactions/", response_model=List[Transaction])
-def list_transactions():
-    with Session(engine) as session:
-        return session.exec(select(Transaction)).all()
-
-
-@app.get("/transactions/{transaction_id}", response_model=Transaction)
-def get_transaction(transaction_id: int):
-    with Session(engine) as session:
-        txn = session.get(Transaction, transaction_id)
-        if not txn:
-            raise HTTPException(status_code=404, detail="Transaction not found")
-        return txn
-
-
-@app.patch("/transactions/{transaction_id}", response_model=Transaction)
-def update_transaction(transaction_id: int, transaction: Transaction):
-    with Session(engine) as session:
-        db_txn = session.get(Transaction, transaction_id)
-        if not db_txn:
-            raise HTTPException(status_code=404, detail="Transaction not found")
-        updates = transaction.model_dump(exclude_unset=True)  # use model_dump
-        for key, val in updates.items():
-            setattr(db_txn, key, val)
-        session.add(db_txn)
-        session.commit()
-        session.refresh(db_txn)
-        return db_txn
-
-
-@app.delete("/transactions/{transaction_id}")
-def delete_transaction(transaction_id: int):
-    with Session(engine) as session:
-        txn = session.get(Transaction, transaction_id)
-        if not txn:
-            raise HTTPException(status_code=404, detail="Transaction not found")
-        session.delete(txn)
-        session.commit()
-        return {"ok": True}
-
-
-# Further endpoints for Retention, ExchangeRate, Configuration can be added similarly
+@app.delete("/v1/assets/{asset_id}")
+def delete_asset(asset_id: int, session: Session = Depends(get_session)):
+    """Delete an asset."""
+    asset = session.get(Asset, asset_id)
+    if not asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    session.delete(asset)
+    session.commit()
+    return {"ok": True}
