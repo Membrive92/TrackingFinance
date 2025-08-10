@@ -1,1 +1,68 @@
-/* You can add global styles to this file, and also import other style files */
+/* --- Dark theme tokens --- */
+:root {
+  --bg: #0f141b;
+  --panel: #141a22;
+  --card: #1b2230;
+  --text: #e4e6ea;
+  --muted: #a0aec0;
+  --line: #2a3340;
+  --primary: #0b5ed7;
+  --primary-2: #4299e1;
+  --success: #16a34a;
+  --danger: #dc2626;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  color: var(--text);
+  background: linear-gradient(180deg, var(--bg), #0b1016 60%, var(--bg));
+}
+
+/* Layout */
+.container { display: grid; grid-template-columns: 240px 1fr; min-height: 100vh; }
+.sidebar { background: var(--panel); border-right: 1px solid var(--line); padding: 20px; }
+.brand { font-weight: 700; font-size: 18px; margin-bottom: 20px; }
+.menu { display: grid; gap: 8px; }
+.menu a {
+  color: var(--muted); text-decoration: none; padding: 10px 12px; border-radius: 8px;
+  display: block;
+}
+.menu a.active, .menu a:hover { color: var(--text); background: #1a2231; }
+
+.content { display: grid; grid-template-rows: 64px 1fr; }
+.header { display: flex; align-items: center; padding: 0 24px; border-bottom: 1px solid var(--line); background: var(--panel); }
+.header-title { font-size: 18px; margin: 0; }
+.main { padding: 24px; }
+
+/* Cards / panels */
+.card {
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+  padding: 16px; box-shadow: 0 10px 30px rgba(0,0,0,.25);
+}
+
+/* Buttons */
+.btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: .5rem .75rem; border-radius: 8px; border: 1px solid var(--line);
+  color: var(--text); text-decoration: none; background: #1a2231; cursor: pointer;
+}
+.btn-primary { background: var(--primary); border-color: transparent; }
+.btn:hover { filter: brightness(1.1); }
+
+/* Tables (dark) */
+.table { width: 100%; border-collapse: collapse; }
+.table th, .table td { padding: 12px 14px; text-align: left; border-bottom: 1px solid var(--line); }
+.table thead th { color: var(--muted); font-weight: 600; background: #141b27; }
+.table tbody tr:hover { background: #141b27; }
+
+/* Forms */
+.input, select, input[type="number"] {
+  width: 100%; padding: .6rem .75rem; color: var(--text);
+  background: #121a25; border: 1px solid var(--line); border-radius: 8px;
+}
+label { display: grid; gap: 6px; color: var(--muted); font-size: 14px; }
+.form-grid { display: grid; gap: 16px; max-width: 560px; }
+.actions { display: flex; gap: 10px; align-items: center; margin-top: 8px; }
