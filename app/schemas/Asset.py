@@ -1,25 +1,23 @@
-
+from __future__ import annotations
 from typing import Optional
 from pydantic import BaseModel, Field
+from app.domain.enums import AssetType, Currency
 
-# What the client sends to create an asset
 class AssetCreate(BaseModel):
-    ticker: str
-    asset_type: str
+    ticker: str = Field(min_length=1, max_length=20)
+    asset_type: AssetType
     current_price: float
-    currency: str = Field("EUR", min_length=3, max_length=3)
+    currency: Currency = Currency.EUR
 
-# What the API returns to the client
 class AssetRead(BaseModel):
     id: int
     ticker: str
-    asset_type: str
+    asset_type: AssetType
     current_price: float
-    currency: str
+    currency: Currency
 
-# What the client can send to partially update an asset
 class AssetUpdate(BaseModel):
-    ticker: Optional[str] = None
-    asset_type: Optional[str] = None
+    ticker: Optional[str] = Field(default=None, min_length=1, max_length=20)
+    asset_type: Optional[AssetType] = None
     current_price: Optional[float] = None
-    currency: Optional[str] = None
+    currency: Optional[Currency] = None

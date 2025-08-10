@@ -81,8 +81,8 @@ def get_asset(asset_id: int, session: Session = Depends(get_session)):
 
 @app.post("/v1/assets", response_model=AssetRead, status_code=201)
 def create_asset(payload: AssetCreate, session: Session = Depends(get_session)):
-    """Create a new asset."""
-    asset = Asset(**payload.model_dump())
+    data = payload.model_dump(mode="json")   # <-- convierte enums a strings
+    asset = Asset(**data)
     session.add(asset)
     session.commit()
     session.refresh(asset)
@@ -91,12 +91,12 @@ def create_asset(payload: AssetCreate, session: Session = Depends(get_session)):
 
 @app.patch("/v1/assets/{asset_id}", response_model=AssetRead)
 def update_asset(asset_id: int, payload: AssetUpdate, session: Session = Depends(get_session)):
-    """Partially update an asset."""
     asset = session.get(Asset, asset_id)
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
 
-    for k, v in payload.model_dump(exclude_unset=True).items():
+    updates = payload.model_dump(mode="json", exclude_unset=True)  # <-- idem
+    for k, v in updates.items():
         setattr(asset, k, v)
 
     session.commit()
