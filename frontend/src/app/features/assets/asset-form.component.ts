@@ -1,9 +1,10 @@
-import { Component, inject } from '@angular/core';
+import { Component, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
-import { Router, RouterModule } from '@angular/router';
+import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { AssetsService } from '../../services/assets.service';
-import { AssetType, Currency } from '../../models/asset';
+import { AssetType, Currency, AssetRead } from '../../models/asset';
+import { ToastService } from '../../services/toast.service';
 
 @Component({
   selector: 'app-asset-form',
@@ -11,7 +12,7 @@ import { AssetType, Currency } from '../../models/asset';
   imports: [CommonModule, ReactiveFormsModule, RouterModule],
   template: `
     <div class="card">
-      <h2 style="margin-top:0">New Asset</h2>
+      <h2 style="margin-top:0">{{ isEdit ? 'Edit Asset' : 'New Asset' }}</h2>
 
       <form [formGroup]="form" (ngSubmit)="submit()" class="form-grid">
         <label>
@@ -42,7 +43,9 @@ import { AssetType, Currency } from '../../models/asset';
         </label>
 
         <div class="actions">
-          <button class="btn btn-primary" type="submit" [disabled]="form.invalid">Create</button>
+          <button class="btn btn-primary" type="submit" [disabled]="form.invalid">
+            {{ isEdit ? 'Save' : 'Create' }}
+          </button>
           <a class="btn" routerLink="/assets">Cancel</a>
         </div>
       </form>
@@ -50,13 +53,17 @@ import { AssetType, Currency } from '../../models/asset';
   `,
   styles: []
 })
-export default class AssetFormComponent {
-  AssetType = AssetType;
-  Currency = Currency;
+export default class AssetFormComponent implements OnInit {
+  AssetType = AssetType; Currency = Currency;
 
   private fb = inject(FormBuilder);
   private api = inject(AssetsService);
   private router = inject(Router);
+  private route = inject(ActivatedRoute);
+  private toast = inject(ToastService);
+
+  isEdit = false;
+  assetId: number | null = null;
 
   form = this.fb.group({
     ticker: ['', [Validators.required, Validators.minLength(1), Validators.maxLength(20)]],
@@ -65,11 +72,42 @@ export default class AssetFormComponent {
     currency: [Currency.EUR, Validators.required],
   });
 
+  ngOnInit(): void {
+    const idParam = this.route.snapshot.paramMap.get('id');
+    if (idParam) {
+      this.isEdit = true;
+      this.assetId = Number(idParam);
+      this.api.get(this.assetId).subscribe((a: AssetRead) => {
+        this.form.patchValue({
+          ticker: a.ticker,
+          asset_type: a.asset_type,
+          current_price: a.current_price,
+          currency: a.currency,
+        });
+      });
+    }
+  }
+
   submit() {
     if (this.form.invalid) return;
-    this.api.create(this.form.value as any).subscribe({
-      next: () => this.router.navigateByUrl('/assets'),
-      error: (err) => console.error('Create failed', err)
-    });
+
+    if (this.isEdit && this.assetId != null) {
+      this.api.update(this.assetId, this.form.value as any).subscribe({
+        next: () => {
+          this.toast.success('Asset updated successfully', 'Changes have been saved.');
+          this.router.navigateByUrl('/assets');
+        },
+        error: () => this.toast.error('Update failed', 'Please try again in a moment.'),
+      });
+    } else {
+      this.api.create(this.form.value as any).subscribe({
+        next: () => {
+          this.toast.success('Asset created successfully', 'Your new asset has been saved.');
+          this.router.navigateByUrl('/assets');
+        },
+        error: () => this.toast.error('Creation failed', 'Please verify the fields and try again.'),
+      });
+    }
   }
+
 }
